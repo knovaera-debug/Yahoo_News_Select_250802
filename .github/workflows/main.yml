@@ -1,16 +1,15 @@
-name: Yahoo News Daily Scraper
+name: Yahoo News Daily Scraper (Selenium)
 
 on:
   schedule:
-    - cron: '0 21 * * *'  # JST 6:00 実行
+    - cron: '0 21 * * *'  # JST 6:00
   workflow_dispatch:
 
 jobs:
-  run-news-scraper:
+  selenium-scraper:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -18,10 +17,26 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python packages
+      - name: Install Google Chrome
+        run: |
+          sudo apt update
+          sudo apt install -y wget unzip xvfb libxi6 libgconf-2-4
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
+
+      - name: Install ChromeDriver
+        run: |
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+          CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_MAJOR}/chromedriver_linux64.zip
+          unzip chromedriver.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
+
+      - name: Install Python Packages
         run: pip install -r requirements.txt
 
-      - name: Run news scraper
+      - name: Run Selenium Script
         run: python scrape_yahoo_news.py
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
