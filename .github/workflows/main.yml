@@ -1,50 +1,31 @@
-name: Yahoo News Scraper Daily
+name: Yahoo News Scraper
 
 on:
   schedule:
-    - cron: '0 5 * * *'  # JST 14:00（UTC 5:00）
+    - cron: '30 5 * * *'  # 毎日14:30 JST（05:30 UTC）
   workflow_dispatch:
 
 jobs:
-  selenium-scraper:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📂 Checkout Repository
-        uses: actions/checkout@v4
+      - name: 📥 リポジトリ取得
+        uses: actions/checkout@v3
 
-      - name: 🧰 Set up Python
-        uses: actions/setup-python@v5
+      - name: 🐍 Python セットアップ
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: 3.11
 
-      - name: 🧪 Install system dependencies
+      - name: 🧪 依存ライブラリインストール
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip xvfb libxi6 fonts-ipafont-gothic libnss3 libxss1 libasound2t64 libatk-bridge2.0-0 libcups2 libxkbcommon0 libgtk-3-0
-
-      - name: 🌐 Install Google Chrome 137
-        run: |
-          wget https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_137.0.7012.124-1_amd64.deb
-          sudo dpkg -i google-chrome*.deb || sudo apt-get -f install -y
-
-      - name: 🌐 Install ChromeDriver for Chrome 137
-        run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-          echo "Chrome version: $CHROME_VERSION"
-          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/137.0.7012.124/chromedriver_linux64.zip
-          unzip chromedriver.zip
-          sudo mv chromedriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/chromedriver
-
-      - name: 📦 Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🚀 Run Scraper
+      - name: 🟢 スクリプト実行
+        run: python scrape_yahoo_news.py
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: |
-          echo "📌 実行開始"
-          python scrape_yahoo_news.py
+
+      - name: ✅ 完了通知
+        run: echo "Yahoo News Scraping Done!"
