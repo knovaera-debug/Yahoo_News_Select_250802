@@ -2,3 +2,4 @@ gspread
 oauth2client
 selenium
 beautifulsoup4
+chromedriver-autoinstaller
