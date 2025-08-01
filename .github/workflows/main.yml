@@ -2,7 +2,7 @@ name: Yahoo News Daily Scraper (Selenium)
 
 on:
   schedule:
-    - cron: '0 21 * * *'  # JST 6:00 実行
+    - cron: '0 21 * * *'  # JST 6:00 実行（UTC 21:00）
   workflow_dispatch:
 
 jobs:
@@ -18,21 +18,20 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Google Chrome
+      - name: Install Google Chrome 114
         run: |
+          wget https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_114.0.5735.90-1_amd64.deb
           sudo apt update
-          sudo apt install -y wget unzip xvfb libxi6 libnss3 libatk-bridge2.0-0 libxss1 libgtk-3-0 libasound2t64
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
+          sudo apt install -y ./google-chrome-stable_114.0.5735.90-1_amd64.deb
+          google-chrome --version
 
-      - name: Install ChromeDriver
+      - name: Install ChromeDriver 114
         run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-          CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_MAJOR}/chromedriver_linux64.zip
+          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip
           unzip chromedriver.zip
           sudo mv chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
+          chromedriver --version
 
       - name: Install Python Dependencies
         run: pip install -r requirements.txt
