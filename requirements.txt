@@ -1,5 +1,4 @@
 gspread
 oauth2client
-openpyxl
-requests
+selenium
 beautifulsoup4
