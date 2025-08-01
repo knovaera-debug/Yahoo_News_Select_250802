@@ -60,10 +60,12 @@ for keyword in keywords:
     time.sleep(3)  # JavaScriptレンダリング待ち
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
-    articles = soup.select("div.sc-1out364-0")
+
+    # ✅ 修正済セレクタ（2025年8月現在）
+    articles = soup.select("div.newsFeed_item")
     print(f"　→ 記事数: {len(articles)}")
 
-    for article in articles[:5]:
+    for article in articles[:5]:  # 最大5件まで
         try:
             a_tag = article.select_one("a")
             if not a_tag:
