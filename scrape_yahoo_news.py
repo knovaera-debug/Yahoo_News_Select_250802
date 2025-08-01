@@ -57,11 +57,13 @@ for keyword in keywords:
     print(f"🔍 検索開始: {keyword}")
     search_url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(search_url)
-    time.sleep(3)  # JavaScriptレンダリング待ち
+    time.sleep(5)  # JavaScriptレンダリング待ち
+
+    # 💡 ページソース冒頭を表示（HTML構造確認用）
+    print("🌐 ページソース冒頭（1000文字）:")
+    print(driver.page_source[:1000])
 
     soup = BeautifulSoup(driver.page_source, "html.parser")
-
-    # ✅ 修正済セレクタ（2025年8月現在）
     articles = soup.select("div.newsFeed_item")
     print(f"　→ 記事数: {len(articles)}")
 
