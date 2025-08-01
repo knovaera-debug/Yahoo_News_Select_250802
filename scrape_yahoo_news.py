@@ -1,86 +1,92 @@
 import os
-import json
 import time
 from datetime import datetime, timedelta
+import pytz
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 設定 ---
-KEYWORDS_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
-OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
-INPUT_SHEET_NAME = 'keywords'
-HEADLESS = True
-
-# --- Google認証 ---
-google_creds = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+# === Google認証設定 ===
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(google_creds, scope)
+creds_path = "service_account.json"
+credentials = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
 gc = gspread.authorize(credentials)
 
-# --- キーワード読み込み ---
-keyword_ws = gc.open_by_key(KEYWORDS_SPREADSHEET_ID).worksheet(INPUT_SHEET_NAME)
-keywords = keyword_ws.col_values(1)[1:]  # A2以降
+# === スプレッドシート設定 ===
+KEYWORDS_SPREADSHEET_ID = "1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc"  # キーワード用
+OUTPUT_SPREADSHEET_ID = "1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM"  # 出力先
 
-# --- 日付と出力シート名 ---
-now = datetime.now()
-JST = timedelta(hours=9)
-today_jst = (now + JST).strftime("%y%m%d")
+INPUT_SHEET_NAME = "keywords"
+JST = pytz.timezone('Asia/Tokyo')
+today_jst = datetime.now(JST).strftime("%y%m%d")
+
 print("📌 実行開始")
-print("✅ キーワード一覧:", keywords)
 
-# --- 出力用シート準備 ---
+# === キーワード取得 ===
+keyword_ws = gc.open_by_key(KEYWORDS_SPREADSHEET_ID).worksheet(INPUT_SHEET_NAME)
+keywords = [row[0] for row in keyword_ws.get_all_values()[1:] if row]
+print(f"✅ キーワード一覧: {keywords}")
+
+# === 出力シート準備 ===
 output_book = gc.open_by_key(OUTPUT_SPREADSHEET_ID)
 try:
     output_ws = output_book.worksheet(today_jst)
 except gspread.exceptions.WorksheetNotFound:
-    base_ws = output_book.worksheet("Base")
-    output_ws = base_ws.duplicate(new_sheet_name=today_jst)
-print(f"📄 既存シート {today_jst} を使用")
+    try:
+        base_ws = output_book.worksheet("Base")
+        output_ws = base_ws.duplicate(new_sheet_name=today_jst)
+    except gspread.exceptions.WorksheetNotFound:
+        output_ws = output_book.add_worksheet(title=today_jst, rows="100", cols="10")
+        output_ws.update('A1:F1', [["No", "キーワード", "タイトル", "URL", "日付", "本文"]])
 
-# --- Chromeドライバ設定（GitHub Actions対応） ---
+# === Chromeドライバー設定（ヘッドレス） ===
 options = Options()
-if HEADLESS:
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-
+options.add_argument('--headless')
+options.add_argument('--disable-gpu')
+options.add_argument('--no-sandbox')
 driver = webdriver.Chrome(options=options)
 
-# --- 検索処理 ---
-all_data = []
-row_num = 2
+row_idx = 2
+
+# === 各キーワードで検索処理 ===
 for kw in keywords:
     print(f"🔍 検索開始: {kw}")
-    url = f"https://news.yahoo.co.jp/search?p={kw}&ei=utf-8"
+    url = f"https://news.yahoo.co.jp/search?p={kw}"
     driver.get(url)
     time.sleep(2)
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    articles = soup.select("li.sc-8tlg6o-0")  # Yahoo!記事ブロックセレクタ
+    soup = BeautifulSoup(driver.page_source, "html.parser")
+    articles = soup.select('div.sc-7n8lh-2.fvHeUD > div > article > div > div > div > a')
+
     print(f"　→ 記事数: {len(articles)}")
 
-    for article in articles:
+    for i, a_tag in enumerate(articles):
         try:
-            title = article.select_one('a').text.strip()
-            link = article.select_one('a')['href']
-            date_elem = article.select_one("time")
-            date_text = date_elem.text.strip() if date_elem else "不明"
-            all_data.append([row_num - 1, kw, title, link, date_text])
-            row_num += 1
+            href = a_tag.get("href")
+            title = a_tag.get_text(strip=True)
+            driver.get(href)
+            time.sleep(1.5)
+            article_soup = BeautifulSoup(driver.page_source, "html.parser")
+
+            # 日付取得
+            date_tag = article_soup.select_one('time')
+            date_text = date_tag.get_text(strip=True) if date_tag else ""
+
+            # 本文取得
+            body_tag = article_soup.select_one("article")
+            if not body_tag:
+                body_tag = article_soup.select_one("div[class*='article']")
+            body = body_tag.get_text(separator="\n", strip=True) if body_tag else ""
+
+            # スプレッドシートに出力
+            output_ws.update(f"A{row_idx}:F{row_idx}", [[i + 1, kw, title, href, date_text, body]])
+            row_idx += 1
         except Exception as e:
-            print(f"⚠️ パースエラー: {e}")
+            print(f"⚠️ 取得失敗: {e}")
             continue
 
-# --- データ書き込み（バルク）---
-if all_data:
-    print(f"📝 出力行数: {len(all_data)}")
-    output_ws.update(f"A2:E{len(all_data)+1}", all_data)
-else:
-    print("📭 書き込むデータがありません。")
-
 driver.quit()
-print("✅ 処理完了")
+print("✅ 完了")
