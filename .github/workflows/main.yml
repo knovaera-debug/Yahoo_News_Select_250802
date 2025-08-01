@@ -1,8 +1,8 @@
-name: Yahoo News Daily Scraper
+name: Yahoo News Daily Scraper (Selenium)
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 毎日15:00 JST（= 06:00 UTC）
+    - cron: '0 5 * * *'  # JST 14:00（UTC 5:00）
   workflow_dispatch:
 
 jobs:
@@ -10,33 +10,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 📦 リポジトリをチェックアウト
-      uses: actions/checkout@v3
+      - name: 📦 リポジトリをチェックアウト
+        uses: actions/checkout@v4
 
-    - name: 🧪 Pythonセットアップ
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: 🧰 必要パッケージのインストール
+        run: |
+          sudo apt update
+          sudo apt install -y wget unzip xvfb libxi6 libnss3 libxss1 libxcursor1 libxcomposite1 libxtst6 libasound2t64 fonts-ipafont
 
-    - name: 🧰 必要パッケージのインストール
-      run: |
-        sudo apt update
-        sudo apt install -y wget unzip xvfb libxi6 libnss3 libxss1 libxcursor1 libxcomposite1 libasound2 libxtst6 fonts-ipafont
-        wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-        sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-        wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip || wget -O chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION%%.*}.0.0/linux64/chromedriver-linux64.zip
-        unzip chromedriver.zip
-        sudo mv chromedriver*/chromedriver /usr/local/bin/chromedriver || sudo mv chromedriver /usr/local/bin/chromedriver
-        sudo chmod +x /usr/local/bin/chromedriver
+      - name: 🌐 Google Chrome のインストール
+        run: |
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
 
-    - name: 🧪 Pythonライブラリのインストール
-      run: |
-        pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: 🧭 ChromeDriver のインストール
+        run: |
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
+          echo "Chrome version: $CHROME_VERSION"
+          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip
+          unzip chromedriver.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
 
-    - name: ▶️ スクレイピング実行
-      env:
-        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-      run: |
-        xvfb-run python scrape_yahoo_news.py
+      - name: 🐍 Python セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Python ライブラリのインストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: ▶️ スクレイピングスクリプト実行
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: |
+          echo "$GOOGLE_CREDENTIALS" > service_account.json
+          python scrape_yahoo_news.py
