@@ -2,7 +2,7 @@ name: Yahoo News Daily Scraper (Selenium)
 
 on:
   schedule:
-    - cron: '0 21 * * *'  # JST 6:00 実行（UTC 21:00）
+    - cron: '0 21 * * *'  # JST 6:00 実行
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
       - name: Install Google Chrome
         run: |
           sudo apt update
-          sudo apt install -y wget unzip xvfb libxi6 libnss3 libatk-bridge2.0-0 libxss1 libgtk-3-0 libasound2
+          sudo apt install -y wget unzip xvfb libxi6 libnss3 libatk-bridge2.0-0 libxss1 libgtk-3-0 libasound2t64
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
 
