@@ -1,0 +1,31 @@
+name: Yahoo News Scraper
+
+on:
+  schedule:
+    - cron: '0 21 * * *'  # JST 6:00 (UTC+9 → UTC 21:00)
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Scraper
+        run: python scrape_yahoo_news.py
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yahoo_news_${{ github.run_id }}
+          path: '*.xlsx'
