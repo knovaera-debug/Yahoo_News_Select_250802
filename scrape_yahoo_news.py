@@ -61,17 +61,26 @@ for keyword in keywords:
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(url)
     
-    # ページに複数の記事要素（articleタグ）が出現するまで最大30秒間待機する
     try:
+        # 記事のリスト、または「検索結果なし」のメッセージが表示されるまで待機
         WebDriverWait(driver, 30).until(
-            EC.presence_of_all_elements_located((By.TAG_NAME, 'article'))
+            EC.any_of(
+                EC.presence_of_all_elements_located((By.TAG_NAME, 'article')),
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="content-item"]'))
+            )
         )
     except TimeoutException:
         print(f"⚠️ タイムアウト: キーワード '{keyword}' で記事が見つかりませんでした。")
-        continue # 記事が見つからない場合は次のキーワードへスキップ
-        
+        continue
+
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     articles = soup.select('article')
+    
+    # 記事が取得できなかった場合、「記事が見つかりませんでした」というログを出力して次へ進む
+    if not articles:
+        print(f"　→ 記事数: 0")
+        continue
+    
     print(f"　→ 記事数: {len(articles)}")
 
     for i, article in enumerate(articles[:10], start=1):
