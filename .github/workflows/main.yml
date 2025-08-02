@@ -2,12 +2,13 @@ name: Yahoo News Scraper
 
 on:
   schedule:
-    - cron: '0 5 * * *'  # JST 14:00 実行
+    - cron: '0 21 * * *'  # JST 6:00 (UTC 21:00)
   workflow_dispatch:
 
 jobs:
-  run:
+  run-scraper:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,26 +18,24 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt update
           sudo apt install -y wget unzip xvfb libxi6 libgconf-2-4 || true
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
           wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip
           unzip chromedriver.zip
           sudo mv chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
-          pip install -r requirements.txt
 
-      - name: Run Yahoo News Scraper
-        run: |
-          python scrape_yahoo_news.py
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Scraper
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: credentials.json
-
-      - name: Upload log (if any)
-        if: failure()
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          echo "❌ エラーが発生しました。ログを確認してください。"
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > credentials.json
+          python scrape_yahoo_news.py
