@@ -61,10 +61,10 @@ for keyword in keywords:
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(url)
     
-    # ページに記事の要素（articleタグ）が出現するまで最大10秒間待機する
+    # ページに複数の記事要素（articleタグ）が出現するまで最大10秒間待機する
     try:
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'article'))
+            EC.presence_of_all_elements_located((By.TAG_NAME, 'article'))
         )
     except TimeoutException:
         print(f"⚠️ タイムアウト: キーワード '{keyword}' で記事が見つかりませんでした。")
