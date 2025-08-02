@@ -61,23 +61,25 @@ for keyword in keywords:
         time_tag = article.time
         time_str = time_tag['datetime'] if time_tag and 'datetime' in time_tag.attrs else ''
         try:
-            # コメント数の取得
-            comment_count = ''
-            if '/articles/' in link:
-                driver.get(link + '/comments')
-                time.sleep(1)
-                comment_soup = BeautifulSoup(driver.page_source, 'html.parser')
-                comment_span = comment_soup.select_one('span.sc-1bofrcr-1.fRcwKN')
-                if comment_span:
-                    comment_count = comment_span.text.strip().replace('件', '')
-
             article_data = f'=HYPERLINK("{link}", "{title}")'
             output_ws.update(f'B{i+1}', article_data)
             output_ws.update(f'C{i+1}', time_str)
             output_ws.update(f'D{i+1}', keyword)
-            output_ws.update(f'F{i+1}', comment_count)
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
 
-driver.quit()
+        # コメント数取得（必要に応じて）
+        try:
+            if link.startswith('https://news.yahoo.co.jp/articles/'):
+                driver.get(link)
+                time.sleep(2)
+                soup = BeautifulSoup(driver.page_source, 'html.parser')
+                comment_count_elem = soup.select_one('span[class*="commentCount"]')
+                comment_count = comment_count_elem.text.strip() if comment_count_elem else "0"
+                output_ws.update(f'F{i+1}', comment_count)
+        except Exception as e:
+            print(f"⚠️ コメント数取得失敗: {e}")
+
+
 print("✅ 完了")
+driver.quit()
