@@ -1,124 +1,101 @@
 import os
-import json
 import time
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from bs4 import BeautifulSoup
+from openpyxl import Workbook
 
-# ===========================
-# Google Sheets 認証
-# ===========================
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-with open("credentials.json", "r", encoding="utf-8") as f:
-    credentials = ServiceAccountCredentials.from_json_keyfile_dict(json.load(f), scope)
+# Google Sheets認証
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
 gc = gspread.authorize(credentials)
 
-# ===========================
-# Google Sheets 取得
-# ===========================
-SPREADSHEET_ID = "1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM"
-sheet = gc.open_by_key(SPREADSHEET_ID)
-input_ws = sheet.worksheet("input")
-urls = input_ws.col_values(3)[1:]  # C2以降
+# Google Sheets設定
+SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
+DATE_STR = datetime.now().strftime('%y%m%d')
+BASE_SHEET = 'Base'
 
-# ===========================
-# 出力ファイル設定
-# ===========================
-today_str = datetime.now().strftime("%y%m%d")
-try:
-    base_ws = sheet.worksheet("Base")
-    sheet.duplicate_sheet(base_ws.id, insert_sheet_index=0, new_sheet_name=today_str)
-except:
-    pass
+# ヘッドレスブラウザ設定
+chrome_options = Options()
+chrome_options.add_argument('--headless')
+chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument('--disable-dev-shm-usage')
 
-daily_ws = sheet.worksheet(today_str)
+# WebDriver起動
+browser = webdriver.Chrome(options=chrome_options)
 
-# ===========================
-# Selenium設定（ヘッドレス）
-# ===========================
-options = Options()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-driver = webdriver.Chrome(options=options)
+# Google SheetからURL取得
+sh = gc.open_by_key(SPREADSHEET_ID)
+input_ws = sh.worksheet("input")
+urls = input_ws.col_values(3)[1:]  # C列（C2以降）
 
-# ===========================
-# 相対時間 -> 絶対時間
-# ===========================
-def parse_relative_time(text):
-    now = datetime.now()
-    if "分前" in text:
-        return now - timedelta(minutes=int(text.replace("分前", "").strip()))
-    elif "時間前" in text:
-        return now - timedelta(hours=int(text.replace("時間前", "").strip()))
-    elif "日前" in text:
-        return now - timedelta(days=int(text.replace("日前", "").strip()))
-    return now
+# 日付シートがなければ作成
+if DATE_STR not in [ws.title for ws in sh.worksheets()]:
+    sh.duplicate_sheet(sh.worksheet(BASE_SHEET).id, new_sheet_name=DATE_STR)
 
-# ===========================
-# メイン処理
-# ===========================
-def scrape_article(url):
-    driver.get(url)
-    time.sleep(2)
-    soup = BeautifulSoup(driver.page_source, "html.parser")
+date_ws = sh.worksheet(DATE_STR)
 
-    # 本文
-    article_elem = soup.select_one("article")
-    paragraphs = [p.get_text(strip=True) for p in article_elem.select("p") if p.get_text(strip=True)] if article_elem else []
+# ニュース記事取得関数
+def fetch_article_and_comments(url):
+    browser.get(url)
+    time.sleep(3)
+    
+    soup = BeautifulSoup(browser.page_source, 'html.parser')
+    
+    # 本文取得
+    article_div = soup.find('div', class_='article_body')
+    paragraphs = article_div.find_all('p') if article_div else []
+    body_lines = [p.get_text(strip=True) for p in paragraphs]
 
-    # コメント数
-    comment_count = 0
-    count_elem = soup.select_one(".news-comment-plural__count")
-    if count_elem:
-        try:
-            comment_count = int(count_elem.get_text().replace(",", ""))
-        except:
-            pass
-
-    # コメント一覧取得
+    # コメント全件取得
     comments = []
-    comment_blocks = soup.select(".news-comment-list__item")
-    for block in comment_blocks:
-        text = block.select_one(".news-comment-body")
-        user = block.select_one(".news-comment-user__name")
-        time_tag = block.select_one(".news-comment-time")
-        if text:
-            comments.append([user.text.strip() if user else "",
-                             parse_relative_time(time_tag.text.strip()).strftime("%Y/%m/%d %H:%M") if time_tag else "",
-                             text.text.strip()])
-
-    return paragraphs, comment_count, comments
-
-# ===========================
-# 実行ループ
-# ===========================
-for idx, url in enumerate(urls):
-    if not url.strip():
-        continue
-    print(f"▶ {idx+1}: {url}")
     try:
-        paragraphs, comment_count, comments = scrape_article(url)
+        while True:
+            more_button = browser.find_element(By.CLASS_NAME, 'news-comment-loadmore-btn')
+            if more_button.is_displayed():
+                browser.execute_script("arguments[0].click();", more_button)
+                time.sleep(1)
+            else:
+                break
+    except:
+        pass
 
-        # output: 本文 & コメント一覧
-        page_ws = sheet.duplicate_sheet(base_ws.id, new_sheet_name=str(idx + 1))
-        target_ws = sheet.worksheet(str(idx + 1))
-        for i, line in enumerate(paragraphs[:15]):
-            target_ws.update_cell(i + 1, 1, line)
+    soup = BeautifulSoup(browser.page_source, 'html.parser')
+    comment_divs = soup.find_all('div', class_='news-comment-body')
+    comments = [div.get_text(strip=True) for div in comment_divs]
 
-        for i, comment in enumerate(comments[:100]):
-            target_ws.update(f"A{20 + i}:C{20 + i}", [comment])
+    return body_lines, comments
 
-        # inputシートF列にコメント数を記録
-        input_ws.update_cell(idx + 2, 6, comment_count)
+# 各URL処理
+for idx, url in enumerate(urls):
+    if not url:
+        continue
+    try:
+        body, comments = fetch_article_and_comments(url)
+
+        # 個別シート作成
+        sheet_title = str(idx + 1)
+        if sheet_title in [ws.title for ws in sh.worksheets()]:
+            sh.del_worksheet(sh.worksheet(sheet_title))
+        new_ws = sh.add_worksheet(title=sheet_title, rows="100", cols="10")
+
+        # 本文出力（1〜）
+        for i, line in enumerate(body):
+            new_ws.update_cell(i + 1, 1, line)
+
+        # コメント出力（20〜）
+        for j, comment in enumerate(comments):
+            new_ws.update_cell(j + 20, 1, comment)
+
+        # コメント数記載
+        date_ws.update_cell(idx + 2, 6, len(comments))  # F列
 
     except Exception as e:
-        print(f"❌ Error at {url}: {e}")
+        print(f"Error at {url}: {e}")
+        date_ws.update_cell(idx + 2, 6, 'ERROR')
 
-# 終了処理
-driver.quit()
-print("✅ 全処理完了")
+browser.quit()
