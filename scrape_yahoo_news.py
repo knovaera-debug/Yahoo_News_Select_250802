@@ -146,15 +146,13 @@ for idx, base_url in enumerate(urls_to_add, start=1):
             data_to_write.append([comment])
 
         # データをまとめて書き込み
-        start_cell = f'{gspread.utils.col_letterize(current_column_idx)}1'
+        start_cell = f'{gspread.utils.column_letterize(current_column_idx)}1'
         date_ws.update(start_cell, data_to_write)
         
         print(f"  - Successfully wrote data for URL {idx} to column {current_column_idx}")
 
     except Exception as e:
         print(f"  - Error writing to Google Sheets for URL {idx}: {e}")
-        # エラー発生時は単にログを出力し、プログラムを続行
-        # Quota exceededエラーが出ているため、追加のAPIコールは行わない
         print("  - Quota exceeded error likely. Please wait a minute before retrying.")
         browser.quit()
         exit()
