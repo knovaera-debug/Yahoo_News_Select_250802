@@ -5,7 +5,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -60,6 +60,18 @@ for keyword in keywords:
     print(f"🔍 検索開始: {keyword}")
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(url)
+
+    # クッキー同意ポップアップの処理
+    try:
+        # ポップアップが表示されるまで最大5秒待機し、表示されたらクリックする
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
+        ).click()
+        print("ℹ️ クッキー同意ポップアップを閉じました。")
+    except TimeoutException:
+        print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
+    except NoSuchElementException:
+        print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
     
     try:
         # 記事のリスト、または「検索結果なし」のメッセージが表示されるまで待機
@@ -76,7 +88,6 @@ for keyword in keywords:
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     articles = soup.select('article')
     
-    # 記事が取得できなかった場合、「記事が見つかりませんでした」というログを出力して次へ進む
     if not articles:
         print(f"　→ 記事数: 0")
         continue
