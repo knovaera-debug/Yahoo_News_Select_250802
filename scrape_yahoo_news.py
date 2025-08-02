@@ -5,9 +5,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
-from openpyxl import Workbook
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Google Sheets認証
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -25,8 +26,9 @@ chrome_options.add_argument('--headless')
 chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage')
 
-# WebDriver起動
-browser = webdriver.Chrome(options=chrome_options)
+# WebDriverを自動的にインストールして起動
+service = Service(ChromeDriverManager().install())
+browser = webdriver.Chrome(service=service, options=chrome_options)
 
 # Google SheetからURL取得
 sh = gc.open_by_key(SPREADSHEET_ID)
