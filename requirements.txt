@@ -1,7 +1,7 @@
 selenium
 beautifulsoup4
-openpyxl
-chromedriver-autoinstaller
 gspread
 oauth2client
+openpyxl
+chromedriver-autoinstaller
 pytz
