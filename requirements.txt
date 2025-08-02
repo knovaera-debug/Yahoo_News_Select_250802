@@ -3,6 +3,5 @@ selenium
 beautifulsoup4
 gspread
 oauth2client
-pandas
 openpyxl
-requests
+pytz
