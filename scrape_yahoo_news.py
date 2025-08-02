@@ -1,3 +1,6 @@
+# scrape_yahoo_news.py
+import os
+import json
 import chromedriver_autoinstaller
 chromedriver_autoinstaller.install()
 
@@ -17,9 +20,10 @@ jst = pytz.timezone('Asia/Tokyo')
 now = datetime.now(jst)
 today_str = now.strftime('%y%m%d')
 
-# ✅ Google認証・スプレッドシート読み込み
+# ✅ Google認証（GitHub Actions用）
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+credentials_dict = json.loads(os.environ['GOOGLE_CREDENTIALS'])
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
 
 # ✅ 入力スプレッドシート（キーワード）
