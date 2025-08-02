@@ -45,14 +45,39 @@ try:
     for base_url in urls:
         if not base_url:
             continue
+            
+        # 最初のページ（page=1）にアクセスしてタイトルと投稿日時を取得
+        try:
+            driver.get(base_url)
+            time.sleep(3) # ページの描画を待つために一時停止を追加
+            initial_soup = BeautifulSoup(driver.page_source, 'html.parser')
+            
+            # ✅ B3にタイトルを書き込み
+            title_tag = initial_soup.find('h1')
+            news_title = title_tag.text.strip() if title_tag else '取得不可'
+            output_ws.update('B3', [[news_title]])
+            print(f"✅ B3セルにタイトルを書き込みました: {news_title}")
 
+            # ✅ B4にURLを書き込み
+            output_ws.update('B4', [[base_url]])
+            print(f"✅ B4セルにURLを書き込みました: {base_url}")
+
+            # ✅ B5に投稿日時を書き込み
+            date_tag = initial_soup.find('time')
+            news_date = date_tag.text.strip() if date_tag else '取得不可'
+            output_ws.update('B5', [[news_date]])
+            print(f"✅ B5セルに投稿日時を書き込みました: {news_date}")
+            
+        except Exception as e:
+            print(f"⚠️ タイトル、URL、投稿日時の取得または書き込みに失敗しました: {e}")
+            
+        # 記事本文（複数ページ対応）の取得と書き込み
         page_number = 1
         while True:
             # ページ番号に応じてURLを構築
             if page_number == 1:
                 article_url = base_url
             else:
-                # URLの末尾に「?page=」とページ番号を追加
                 article_url = f"{base_url}?page={page_number}"
 
             print(f"🔍 URL: {article_url} の記事本文を取得します。")
@@ -60,19 +85,9 @@ try:
             article_body = ""
             driver.get(article_url)
 
-            # ページが存在しない場合のチェック
             if "指定されたURLは存在しませんでした。" in driver.page_source:
                 print(f"ℹ️ {page_number}ページ目は存在しませんでした。処理を終了します。")
                 break
-
-            # クッキー同意ポップアップの処理
-            try:
-                WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
-                ).click()
-                print("ℹ️ クッキー同意ポップアップを閉じました。")
-            except (TimeoutException, NoSuchElementException):
-                print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
 
             try:
                 WebDriverWait(driver, 30).until(
@@ -94,9 +109,7 @@ try:
                 print("-------------------------------------------------")
                 article_body = "記事本文が見つかりませんでした。"
 
-            # ✅ 出力スプレッドシートに書き込み
             try:
-                # B6セルから書き込みを開始
                 row_to_write = f'B{5 + page_number}'
 
                 if len(article_body) > 50000:
@@ -109,7 +122,6 @@ try:
             except Exception as e:
                 print(f"⚠️ 書き込み失敗: {e}")
             
-            # 次のページへ
             page_number += 1
 
 finally:
