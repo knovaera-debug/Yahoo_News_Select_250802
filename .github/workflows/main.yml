@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y xvfb libxi6 libgconf-2-4 google-chrome-stable
+        sudo apt install -y xvfb libxi6 google-chrome-stable
         pip install -r requirements.txt
 
     - name: Run Yahoo News Scraper
