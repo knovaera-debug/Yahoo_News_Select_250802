@@ -1,87 +1,103 @@
+import os
+import json
+import time
+import gspread
+import pytz
 import chromedriver_autoinstaller
-chromedriver_autoinstaller.install()
-
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from bs4 import BeautifulSoup
-from datetime import datetime
-from openpyxl import Workbook
-import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import pytz
-import time
 
-# ✅ タイムゾーンと日付取得
-jst = pytz.timezone('Asia/Tokyo')
-now = datetime.now(jst)
-today_str = now.strftime('%y%m%d')
-
-# ✅ Google認証・スプレッドシート読み込み
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+# Google Sheets認証
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 gc = gspread.authorize(credentials)
 
-# ✅ 入力スプレッドシート（キーワード）
-KEYWORDS_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
-INPUT_SHEET_NAME = 'keywords'
-keyword_ws = gc.open_by_key(KEYWORDS_SPREADSHEET_ID).worksheet(INPUT_SHEET_NAME)
-keywords = keyword_ws.col_values(1)[1:]  # 1列目の2行目以降
+# シート設定
+SPREADSHEET_ID = "1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM"
+INPUT_SHEET = "input"
 
-# ✅ 出力スプレッドシート
-OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
-output_book = gc.open_by_key(OUTPUT_SPREADSHEET_ID)
+# JST設定
+JST = pytz.timezone("Asia/Tokyo")
+now = datetime.now(JST)
+now_str = now.strftime("%y%m%d")
 
-try:
-    output_ws = output_book.worksheet(today_str)
-except gspread.exceptions.WorksheetNotFound:
-    base_ws = output_book.worksheet("Base")
-    output_ws = output_book.duplicate_sheet(source_sheet_id=base_ws.id, new_sheet_name=today_str)
-
-# ✅ Chrome設定
+# Chrome headless設定
+chromedriver_autoinstaller.install()
 options = Options()
 options.add_argument('--headless')
 options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 driver = webdriver.Chrome(options=options)
 
-# ✅ 処理本体
-for keyword in keywords:
-    print(f"\U0001F50D 検索開始: {keyword}")
-    url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
+def fetch_article_and_comments(url):
     driver.get(url)
     time.sleep(2)
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    articles = soup.select('article')
-    print(f"　→ 記事数: {len(articles)}")
+    soup = BeautifulSoup(driver.page_source, "html.parser")
 
-    for i, article in enumerate(articles[:10], start=1):
-        title = article.h3.text.strip() if article.h3 else ""
-        link = article.a['href'] if article.a else ""
-        time_tag = article.time
-        time_str = time_tag['datetime'] if time_tag and 'datetime' in time_tag.attrs else ''
+    # 本文
+    article = soup.find("article")
+    content_lines = []
+    if article:
+        for p in article.find_all("p"):
+            text = p.get_text(strip=True)
+            if text:
+                content_lines.append(text)
 
-        # ✅ コメント数取得処理
-        comment_count = ""
-        try:
-            if 'news.yahoo.co.jp/articles/' in link:
-                driver.get(link)
-                time.sleep(1.5)
-                soup_detail = BeautifulSoup(driver.page_source, 'html.parser')
-                comment_tag = soup_detail.select_one("a[class*='comment']")
-                if comment_tag and comment_tag.text:
-                    comment_count = ''.join(filter(str.isdigit, comment_tag.text))
-        except Exception as e:
-            print(f"⚠️ コメント取得失敗: {e}")
+    # コメント数取得
+    comment_count = 0
+    try:
+        comment_span = soup.find("span", class_="news-comment-count")
+        if comment_span:
+            comment_count = int(comment_span.text.strip().replace("件", ""))
+    except:
+        pass
 
-        try:
-            article_data = f'=HYPERLINK("{link}", "{title}")'
-            output_ws.update(f'B{i+1}', article_data)
-            output_ws.update(f'C{i+1}', time_str)
-            output_ws.update(f'D{i+1}', keyword)
-            output_ws.update(f'F{i+1}', comment_count)
-        except Exception as e:
-            print(f"⚠️ 書き込み失敗: {e}")
+    # コメント本体
+    comments = []
+    comment_blocks = soup.select(".news-comment-body")
+    for block in comment_blocks:
+        text = block.get_text(strip=True)
+        if text:
+            comments.append(text)
 
-print("✅ 完了")
-driver.quit()
+    return content_lines, comments, comment_count
+
+def main():
+    sh = gc.open_by_key(SPREADSHEET_ID)
+    input_ws = sh.worksheet(INPUT_SHEET)
+    urls = input_ws.col_values(3)[1:]  # C列（C2〜）
+
+    # 出力シートがなければ作成
+    try:
+        output_ws = sh.worksheet(now_str)
+    except:
+        base = sh.worksheet("Base")
+        output_ws = sh.duplicate_sheet(source_sheet_id=base.id, new_sheet_name=now_str)
+        output_ws = sh.worksheet(now_str)
+
+    for i, url in enumerate(urls):
+        if not url.strip():
+            continue
+
+        print(f"[{i+1}] {url}")
+        content, comments, count = fetch_article_and_comments(url)
+
+        # 本文
+        for j, line in enumerate(content):
+            output_ws.update_cell(1 + j + 1, 1, line)
+
+        # コメント
+        for k, comment in enumerate(comments):
+            output_ws.update_cell(20 + k + 1, 1, comment)
+
+        # コメント件数をinputシートF列に
+        input_ws.update_cell(i + 2, 6, count)
+
+    driver.quit()
+
+if __name__ == "__main__":
+    main()
