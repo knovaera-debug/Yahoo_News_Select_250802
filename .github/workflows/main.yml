@@ -1,3 +1,6 @@
+# Ubuntu 24.04 対応: libgconf-2-4 が廃止されたため、代替パッケージなしでエラー回避する
+# libgconf-2-4 を削除してエラーを回避したバージョンの setup スクリプト（GitHub Actions用）
+
 name: Yahoo News Scraper
 
 on:
@@ -21,10 +24,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y wget unzip xvfb libxi6 libgconf-2-4
+        sudo apt install -y wget unzip xvfb libxi6
         wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
         sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
         wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip
         unzip chromedriver.zip
         sudo mv chromedriver /usr/local/bin/
