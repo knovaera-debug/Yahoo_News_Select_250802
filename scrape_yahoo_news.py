@@ -33,11 +33,11 @@ driver = webdriver.Chrome(options=options)
 
 # 記事本文のセレクタ候補リスト
 ARTICLE_BODY_SELECTORS = [
-    'div[data-testid="article-body"] p', # data-testidを使うパターン
-    'div.sc-7b29a27c-4 > p.sc-7b29a27c-3', # 前回試したクラス名
-    'div.article_body > p', # 古いバージョンで使われていたセレクタ
-    'div.sc-7b29a27c-4 p',  # クラス名の親子関係が変更された場合
-    'main p' # より汎用的なセレクタ
+    'div[data-testid="article-body"] p',
+    'div.sc-7b29a27c-4 > p.sc-7b29a27c-3',
+    'div.article_body > p',
+    'div.sc-7b29a27c-4 p',
+    'main p'
 ]
 
 def get_article_body_with_multiple_selectors(soup):
@@ -73,19 +73,18 @@ try:
             print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
 
         # ページが完全に読み込まれるまで待機
-        time.sleep(3) # ページの描画を待つために一時停止を追加
+        time.sleep(3)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         article_body = get_article_body_with_multiple_selectors(soup)
 
         if article_body:
+            # 取得した本文の文字数を確認
             print("✅ 記事本文の取得に成功しました。")
+            print(f"　取得した本文の文字数: {len(article_body)}文字")
             print(f"　取得した本文の冒頭: {article_body[:50]}...")
         else:
             print("⚠️ 記事本文の取得に失敗しました。")
-            print("--- デバッグ情報（HTMLソースの冒頭500文字） ---")
-            print(driver.page_source[:500])
-            print("-------------------------------------------------")
             article_body = "記事本文が見つかりませんでした。"
 
         # ✅ 出力スプレッドシートに書き込み
@@ -93,8 +92,14 @@ try:
         output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('Base')
         
         try:
-            output_ws.update('B6', article_body)
-            print("✅ B6セルに記事本文を書き込みました。")
+            # 記事本文が長すぎる場合、50000文字に制限して書き込む
+            if len(article_body) > 50000:
+                truncated_body = article_body[:50000] + "..."
+                output_ws.update('B6', truncated_body)
+                print("✅ 記事本文が長いため、50000文字に制限してB6セルに書き込みました。")
+            else:
+                output_ws.update('B6', article_body)
+                print("✅ B6セルに記事本文を書き込みました。")
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
 
