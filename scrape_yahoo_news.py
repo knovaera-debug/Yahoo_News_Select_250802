@@ -57,15 +57,13 @@ try:
         
         try:
             # 記事本文のコンテナが読み込まれるまで最大30秒待機
-            # Yahoo_250802.py を参考に、より汎用的な'article'タグを使用
             WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.TAG_NAME, 'article'))
             )
             article_soup = BeautifulSoup(driver.page_source, 'html.parser')
-            # 記事本文のコンテナ内のすべてのpタグのテキストを抽出し、改行で結合
+            # 記事本文のコンテナ内のすべてのテキストを取得
             article_container = article_soup.find('article')
             if article_container:
-                # div内のすべてのテキストを改行で結合して取得
                 article_body = article_container.get_text(separator='\n', strip=True)
                 print("✅ 記事本文の取得に成功しました。")
                 print(f"　取得した本文の文字数: {len(article_body)}文字")
@@ -87,10 +85,10 @@ try:
             # APIエラーを防ぐため、文字列の長さに制限を設ける
             if len(article_body) > 50000:
                 truncated_body = article_body[:50000] + "..."
-                output_ws.update('B6', truncated_body)
+                output_ws.update('B6', [[truncated_body]])
                 print("✅ 記事本文が長いため、50000文字に制限してB6セルに書き込みました。")
             else:
-                output_ws.update('B6', article_body)
+                output_ws.update('B6', [[article_body]])
                 print("✅ B6セルに記事本文を書き込みました。")
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
