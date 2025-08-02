@@ -24,10 +24,11 @@ jobs:
           sudo apt install -y wget unzip xvfb libxi6 libgconf-2-4 || true
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip
+          export CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+          export CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | jq -r --arg ver "$CHROME_VERSION" '.channels.Stable.downloads.chromedriver[] | select(.platform == "linux64") | .url')
+          wget -O chromedriver.zip "$CHROMEDRIVER_VERSION"
           unzip chromedriver.zip
-          sudo mv chromedriver /usr/local/bin/
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
 
       - name: Install Python dependencies
