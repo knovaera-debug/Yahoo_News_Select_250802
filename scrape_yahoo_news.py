@@ -16,6 +16,7 @@ gc = gspread.authorize(credentials)
 # Google Sheets設定
 SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
 DATE_STR = datetime.now().strftime('%y%m%d')
+# テンプレートとして使用するベースシート名
 BASE_SHEET = 'Base'
 
 # ヘッドレスブラウザ設定
@@ -25,12 +26,12 @@ chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage')
 
 # WebDriver起動
-# main.ymlで手動インストールされたchromedriverを使用する
 browser = webdriver.Chrome(options=chrome_options)
 
 # Google SheetからURL取得
+# 入力シート名を「URLS」に修正
 sh = gc.open_by_key(SPREADSHEET_ID)
-input_ws = sh.worksheet("input")
+input_ws = sh.worksheet("URLS")
 urls = input_ws.col_values(3)[1:]  # C列（C2以降）
 
 # 日付シートがなければ作成
