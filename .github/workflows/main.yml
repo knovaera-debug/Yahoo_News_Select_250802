@@ -2,41 +2,47 @@ name: Yahoo News Scraper
 
 on:
   schedule:
-    - cron: '0 21 * * *'  # JST 6:00 (UTC 21:00)
+    - cron: '30 5 * * *'  # JST 14:30
   workflow_dispatch:
 
 jobs:
-  run-scraper:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: 📅 Check out repository
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install system dependencies
+      - name: 🛠 Install Chrome and Chromedriver manually
         run: |
           sudo apt update
-          sudo apt install -y wget unzip xvfb libxi6 libgconf-2-4 || true
+          sudo apt install -y wget unzip xvfb libxi6
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-          export CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-          export CHROMEDRIVER_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | jq -r --arg ver "$CHROME_VERSION" '.channels.Stable.downloads.chromedriver[] | select(.platform == "linux64") | .url')
-          wget -O chromedriver.zip "$CHROMEDRIVER_VERSION"
+
+          # Get exact version number
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
+          MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+          echo "Chrome version: $CHROME_VERSION (Major: $MAJOR_VERSION)"
+
+          # Download matching chromedriver manually
+          wget -O chromedriver.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip
           unzip chromedriver.zip
           sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
 
-      - name: Install Python dependencies
+      - name: 🚀 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📊 Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Scraper
+      - name: 🔄 Run Yahoo News scraper
+        run: python scrape_yahoo_news.py
         env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: |
-          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > credentials.json
-          python scrape_yahoo_news.py
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: ✅ Done
+        run: echo "Scraping completed"
