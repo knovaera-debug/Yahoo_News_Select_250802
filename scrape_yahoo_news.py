@@ -56,6 +56,7 @@ options.add_argument('--disable-dev-shm-usage')
 driver = webdriver.Chrome(options=options)
 
 # ✅ 処理本体
+article_count = 0
 for keyword in keywords:
     print(f"🔍 検索開始: {keyword}")
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
@@ -63,7 +64,6 @@ for keyword in keywords:
 
     # クッキー同意ポップアップの処理
     try:
-        # ポップアップが表示されるまで最大5秒待機し、表示されたらクリックする
         WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
         ).click()
@@ -95,15 +95,40 @@ for keyword in keywords:
     print(f"　→ 記事数: {len(articles)}")
 
     for i, article in enumerate(articles[:10], start=1):
+        # 検索結果ページの情報を取得
         title = article.h3.text.strip() if article.h3 else ""
         link = article.a['href'] if article.a else ""
         time_tag = article.time
         time_str = time_tag['datetime'] if time_tag and 'datetime' in time_tag.attrs else ''
+
+        # 記事ページにアクセスして本文を取得
+        article_body = ""
         try:
-            article_data = f'=HYPERLINK("{link}", "{title}")'
-            output_ws.update(f'B{i+1}', article_data)
-            output_ws.update(f'C{i+1}', time_str)
-            output_ws.update(f'D{i+1}', keyword)
+            driver.get(link)
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'p.sc-7b29a27c-3.hBvXzG'))
+            )
+            article_soup = BeautifulSoup(driver.page_source, 'html.parser')
+            body_paragraphs = article_soup.select('p.sc-7b29a27c-3.hBvXzG')
+            article_body = "\n".join([p.text.strip() for p in body_paragraphs])
+            driver.back() # 検索結果ページに戻る
+        except (TimeoutException, NoSuchElementException):
+            print(f"⚠️ 本文取得失敗: {link}")
+        
+        # スプレッドシートに書き込む
+        try:
+            article_count += 1
+            data = [
+                article_count,
+                keyword,
+                f'=HYPERLINK("{link}", "{title}")',
+                link,
+                time_str,
+                article_body,
+                'コメント取得は未対応' # コメント取得が難しいため、暫定的にこの値を設定
+            ]
+            output_ws.insert_row(data, index=2) # 2行目にデータを挿入
+            print(f"✅ 書き込み完了: {title}")
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
 
