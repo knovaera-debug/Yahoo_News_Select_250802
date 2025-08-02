@@ -27,8 +27,11 @@ chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage')
 
 # WebDriverを自動的にインストールして起動
-chrome_driver_path = ChromeDriverManager().install()
-service = Service(chrome_driver_path)
+# ダウンロードされたChromedriverのディレクトリパスを取得
+driver_dir_path = ChromeDriverManager().install()
+# 正しい実行ファイル（chromedriver）のフルパスを構築
+driver_exec_path = os.path.join(driver_dir_path, 'chromedriver')
+service = Service(driver_exec_path)
 browser = webdriver.Chrome(service=service, options=chrome_options)
 
 # Google SheetからURL取得
