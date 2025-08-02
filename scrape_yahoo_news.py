@@ -1,12 +1,12 @@
-# scrape_yahoo_news.py
-import os
-import json
 import chromedriver_autoinstaller
 chromedriver_autoinstaller.install()
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from datetime import datetime
 from openpyxl import Workbook
@@ -14,15 +14,21 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pytz
 import time
+import json
+import os
 
 # ✅ タイムゾーンと日付取得
 jst = pytz.timezone('Asia/Tokyo')
 now = datetime.now(jst)
 today_str = now.strftime('%y%m%d')
 
-# ✅ Google認証（GitHub Actions用）
+# ✅ Google認証情報を環境変数から読み込む
+credentials_json = os.getenv('GOOGLE_CREDENTIALS')
+if credentials_json is None:
+    raise ValueError("環境変数 GOOGLE_CREDENTIALS が設定されていません")
+
+credentials_dict = json.loads(credentials_json)
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-credentials_dict = json.loads(os.environ['GOOGLE_CREDENTIALS'])
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
 
@@ -54,7 +60,16 @@ for keyword in keywords:
     print(f"🔍 検索開始: {keyword}")
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(url)
-    time.sleep(2)
+    
+    # ページに記事の要素（articleタグ）が出現するまで最大10秒間待機する
+    try:
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, 'article'))
+        )
+    except TimeoutException:
+        print(f"⚠️ タイムアウト: キーワード '{keyword}' で記事が見つかりませんでした。")
+        continue # 記事が見つからない場合は次のキーワードへスキップ
+        
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     articles = soup.select('article')
     print(f"　→ 記事数: {len(articles)}")
