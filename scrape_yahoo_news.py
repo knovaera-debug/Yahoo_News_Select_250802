@@ -38,7 +38,6 @@ try:
     
     if not article_url:
         print("⚠️ A2セルにURLがありません。処理を終了します。")
-        driver.quit()
     else:
         print(f"🔍 URL: {article_url} の記事本文を取得します。")
 
@@ -52,17 +51,16 @@ try:
                 EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
             ).click()
             print("ℹ️ クッキー同意ポップアップを閉じました。")
-        except TimeoutException:
-            print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
-        except NoSuchElementException:
+        except (TimeoutException, NoSuchElementException):
             print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
         
         try:
+            # 記事本文の段落が読み込まれるまで最大30秒待機
             WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'p.sc-7b29a27c-3.hBvXzG'))
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.sc-7b29a27c-4 > p.sc-7b29a27c-3'))
             )
             article_soup = BeautifulSoup(driver.page_source, 'html.parser')
-            body_paragraphs = article_soup.select('p.sc-7b29a27c-3.hBvXzG')
+            body_paragraphs = article_soup.select('div.sc-7b29a27c-4 > p.sc-7b29a27c-3')
             article_body = "\n".join([p.text.strip() for p in body_paragraphs])
             print("✅ 記事本文の取得に成功しました。")
         except (TimeoutException, NoSuchElementException):
