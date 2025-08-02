@@ -13,24 +13,6 @@ jobs:
       - name: 📅 Check out repository
         uses: actions/checkout@v3
 
-      - name: 🛠 Install Chrome and Chromedriver manually
-        run: |
-          sudo apt update
-          sudo apt install -y wget unzip xvfb libxi6
-          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
-
-          # Get exact version number
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
-          MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-          echo "Chrome version: $CHROME_VERSION (Major: $MAJOR_VERSION)"
-
-          # Download matching chromedriver manually
-          wget -O chromedriver.zip https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/$CHROME_VERSION/linux64/chromedriver-linux64.zip
-          unzip chromedriver.zip
-          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
-          sudo chmod +x /usr/local/bin/chromedriver
-
       - name: 🚀 Set up Python
         uses: actions/setup-python@v4
         with:
