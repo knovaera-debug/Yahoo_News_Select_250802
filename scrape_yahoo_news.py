@@ -31,23 +31,6 @@ options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 driver = webdriver.Chrome(options=options)
 
-# 記事本文のセレクタ候補リスト
-ARTICLE_BODY_SELECTORS = [
-    'div[data-testid="article-body"] p',
-    'div.sc-7b29a27c-4 > p.sc-7b29a27c-3',
-    'div.article_body > p',
-    'div.sc-7b29a27c-4 p',
-    'main p'
-]
-
-def get_article_body_with_multiple_selectors(soup):
-    """複数のセレクタを試して記事本文を取得する関数"""
-    for selector in ARTICLE_BODY_SELECTORS:
-        body_paragraphs = soup.select(selector)
-        if body_paragraphs:
-            return "\n".join([p.text.strip() for p in body_paragraphs])
-    return ""
-
 try:
     # ✅ 入力スプレッドシートからURLを取得
     INPUT_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
@@ -71,20 +54,28 @@ try:
             print("ℹ️ クッキー同意ポップアップを閉じました。")
         except (TimeoutException, NoSuchElementException):
             print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
-
-        # ページが完全に読み込まれるまで待機
-        time.sleep(3)
-
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        article_body = get_article_body_with_multiple_selectors(soup)
-
-        if article_body:
-            # 取得した本文の文字数を確認
-            print("✅ 記事本文の取得に成功しました。")
-            print(f"　取得した本文の文字数: {len(article_body)}文字")
-            print(f"　取得した本文の冒頭: {article_body[:50]}...")
-        else:
-            print("⚠️ 記事本文の取得に失敗しました。")
+        
+        try:
+            # 記事本文のコンテナが読み込まれるまで最大30秒待機
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="article-body"]'))
+            )
+            article_soup = BeautifulSoup(driver.page_source, 'html.parser')
+            # 記事本文のコンテナ内のすべてのテキストを取得
+            article_body_container = article_soup.select_one('div[data-testid="article-body"]')
+            if article_body_container:
+                # div内のすべてのテキストを改行で結合して取得
+                article_body = article_body_container.get_text(separator='\n', strip=True)
+                print("✅ 記事本文の取得に成功しました。")
+                print(f"　取得した本文の文字数: {len(article_body)}文字")
+                print(f"　取得した本文の冒頭: {article_body[:50]}...")
+            else:
+                raise NoSuchElementException("指定されたセレクタで記事本文が見つかりませんでした。")
+        except (TimeoutException, NoSuchElementException) as e:
+            print(f"⚠️ 記事本文の取得に失敗しました: {e}")
+            print("--- デバッグ情報（HTMLソースの冒頭500文字） ---")
+            print(driver.page_source[:500])
+            print("-------------------------------------------------")
             article_body = "記事本文が見つかりませんでした。"
 
         # ✅ 出力スプレッドシートに書き込み
@@ -92,7 +83,7 @@ try:
         output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('Base')
         
         try:
-            # 記事本文が長すぎる場合、50000文字に制限して書き込む
+            # APIエラーを防ぐため、文字列の長さに制限を設ける
             if len(article_body) > 50000:
                 truncated_body = article_body[:50000] + "..."
                 output_ws.update('B6', truncated_body)
