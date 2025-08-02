@@ -8,19 +8,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
-from datetime import datetime
-from openpyxl import Workbook
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import pytz
-import time
 import json
 import os
-
-# ✅ タイムゾーンと日付取得
-jst = pytz.timezone('Asia/Tokyo')
-now = datetime.now(jst)
-today_str = now.strftime('%y%m%d')
 
 # ✅ Google認証情報を環境変数から読み込む
 credentials_json = os.getenv('GOOGLE_CREDENTIALS')
@@ -32,22 +23,6 @@ scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/au
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
 
-# ✅ 入力スプレッドシート（キーワード）
-KEYWORDS_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
-INPUT_SHEET_NAME = 'keywords'
-keyword_ws = gc.open_by_key(KEYWORDS_SPREADSHEET_ID).worksheet(INPUT_SHEET_NAME)
-keywords = keyword_ws.col_values(1)[1:]  # 1列目の2行目以降
-
-# ✅ 出力スプレッドシート
-OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
-output_book = gc.open_by_key(OUTPUT_SPREADSHEET_ID)
-
-try:
-    output_ws = output_book.worksheet(today_str)
-except gspread.exceptions.WorksheetNotFound:
-    base_ws = output_book.worksheet("Base")
-    output_ws = output_book.duplicate_sheet(source_sheet_id=base_ws.id, new_sheet_name=today_str)
-
 # ✅ Chrome設定
 options = Options()
 options.add_argument('--headless')
@@ -55,82 +30,54 @@ options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 driver = webdriver.Chrome(options=options)
 
-# ✅ 処理本体
-article_count = 0
-for keyword in keywords:
-    print(f"🔍 検索開始: {keyword}")
-    url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
-    driver.get(url)
-
-    # クッキー同意ポップアップの処理
-    try:
-        WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
-        ).click()
-        print("ℹ️ クッキー同意ポップアップを閉じました。")
-    except TimeoutException:
-        print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
-    except NoSuchElementException:
-        print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
+try:
+    # ✅ 入力スプレッドシートからURLを取得
+    INPUT_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
+    input_ws = gc.open_by_key(INPUT_SPREADSHEET_ID).worksheet('Sheet1')  # シート名を適切に変更
+    article_url = input_ws.acell('A2').value
     
-    try:
-        # 記事のリスト、または「検索結果なし」のメッセージが表示されるまで待機
-        WebDriverWait(driver, 30).until(
-            EC.any_of(
-                EC.presence_of_all_elements_located((By.TAG_NAME, 'article')),
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="content-item"]'))
-            )
-        )
-    except TimeoutException:
-        print(f"⚠️ タイムアウト: キーワード '{keyword}' で記事が見つかりませんでした。")
-        continue
+    if not article_url:
+        print("⚠️ A2セルにURLがありません。処理を終了します。")
+        driver.quit()
+    else:
+        print(f"🔍 URL: {article_url} の記事本文を取得します。")
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    articles = soup.select('article')
-    
-    if not articles:
-        print(f"　→ 記事数: 0")
-        continue
-    
-    print(f"　→ 記事数: {len(articles)}")
-
-    for i, article in enumerate(articles[:10], start=1):
-        # 検索結果ページの情報を取得
-        title = article.h3.text.strip() if article.h3 else ""
-        link = article.a['href'] if article.a else ""
-        time_tag = article.time
-        time_str = time_tag['datetime'] if time_tag and 'datetime' in time_tag.attrs else ''
-
-        # 記事ページにアクセスして本文を取得
+        # ✅ 記事ページにアクセスして本文を取得
         article_body = ""
+        driver.get(article_url)
+        
+        # クッキー同意ポップアップの処理
         try:
-            driver.get(link)
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, '.sc-f584f1b4-2.bQjFpQ'))
+            ).click()
+            print("ℹ️ クッキー同意ポップアップを閉じました。")
+        except TimeoutException:
+            print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
+        except NoSuchElementException:
+            print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
+        
+        try:
+            WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'p.sc-7b29a27c-3.hBvXzG'))
             )
             article_soup = BeautifulSoup(driver.page_source, 'html.parser')
             body_paragraphs = article_soup.select('p.sc-7b29a27c-3.hBvXzG')
             article_body = "\n".join([p.text.strip() for p in body_paragraphs])
-            driver.back() # 検索結果ページに戻る
+            print("✅ 記事本文の取得に成功しました。")
         except (TimeoutException, NoSuchElementException):
-            print(f"⚠️ 本文取得失敗: {link}")
+            print("⚠️ 記事本文の取得に失敗しました。")
+
+        # ✅ 出力スプレッドシートに書き込み
+        OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
+        output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('シート1') # シート名を適切に変更
         
-        # スプレッドシートに書き込む
         try:
-            article_count += 1
-            data = [
-                article_count,
-                keyword,
-                f'=HYPERLINK("{link}", "{title}")',
-                link,
-                time_str,
-                article_body,
-                'コメント取得は未対応' # コメント取得が難しいため、暫定的にこの値を設定
-            ]
-            output_ws.insert_row(data, index=2) # 2行目にデータを挿入
-            print(f"✅ 書き込み完了: {title}")
+            output_ws.update('B6', article_body)
+            print("✅ B6セルに記事本文を書き込みました。")
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
 
-driver.quit()
-print("✅ 完了")
+finally:
+    driver.quit()
+    print("✅ 完了")
