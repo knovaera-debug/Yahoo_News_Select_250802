@@ -12,6 +12,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import os
+import time
 
 # ✅ Google認証情報を環境変数から読み込む
 credentials_json = os.getenv('GOOGLE_CREDENTIALS')
@@ -29,6 +30,23 @@ options.add_argument('--headless')
 options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 driver = webdriver.Chrome(options=options)
+
+# 記事本文のセレクタ候補リスト
+ARTICLE_BODY_SELECTORS = [
+    'div[data-testid="article-body"] p', # data-testidを使うパターン
+    'div.sc-7b29a27c-4 > p.sc-7b29a27c-3', # 前回試したクラス名
+    'div.article_body > p', # 古いバージョンで使われていたセレクタ
+    'div.sc-7b29a27c-4 p',  # クラス名の親子関係が変更された場合
+    'main p' # より汎用的なセレクタ
+]
+
+def get_article_body_with_multiple_selectors(soup):
+    """複数のセレクタを試して記事本文を取得する関数"""
+    for selector in ARTICLE_BODY_SELECTORS:
+        body_paragraphs = soup.select(selector)
+        if body_paragraphs:
+            return "\n".join([p.text.strip() for p in body_paragraphs])
+    return ""
 
 try:
     # ✅ 入力スプレッドシートからURLを取得
@@ -53,34 +71,28 @@ try:
             print("ℹ️ クッキー同意ポップアップを閉じました。")
         except (TimeoutException, NoSuchElementException):
             print("ℹ️ クッキー同意ポップアップは表示されませんでした。")
-        
-        try:
-            # 記事本文の段落が読み込まれるまで最大30秒待機
-            # data-testid属性は安定している傾向があるため、これをセレクタとして使用します。
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="article-body"] p'))
-            )
-            article_soup = BeautifulSoup(driver.page_source, 'html.parser')
-            body_paragraphs = article_soup.select('div[data-testid="article-body"] p')
-            article_body = "\n".join([p.text.strip() for p in body_paragraphs])
+
+        # ページが完全に読み込まれるまで待機
+        time.sleep(3) # ページの描画を待つために一時停止を追加
+
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        article_body = get_article_body_with_multiple_selectors(soup)
+
+        if article_body:
             print("✅ 記事本文の取得に成功しました。")
-            if article_body:
-                print(f"　取得した本文の冒頭: {article_body[:50]}...")
-            else:
-                print("　記事本文は取得できましたが、内容が空です。")
-        except (TimeoutException, NoSuchElementException) as e:
-            print(f"⚠️ 記事本文の取得に失敗しました: {e}")
+            print(f"　取得した本文の冒頭: {article_body[:50]}...")
+        else:
+            print("⚠️ 記事本文の取得に失敗しました。")
             print("--- デバッグ情報（HTMLソースの冒頭500文字） ---")
             print(driver.page_source[:500])
             print("-------------------------------------------------")
-
+            article_body = "記事本文が見つかりませんでした。"
 
         # ✅ 出力スプレッドシートに書き込み
         OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
         output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('Base')
         
         try:
-            # 記事本文が空の場合でもエラーにならないように、空文字列を書き込む
             output_ws.update('B6', article_body)
             print("✅ B6セルに記事本文を書き込みました。")
         except Exception as e:
