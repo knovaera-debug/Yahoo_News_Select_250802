@@ -14,9 +14,12 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json
 gc = gspread.authorize(credentials)
 
 # Google Sheets設定
-SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
+# 入力URLを取得するスプレッドシートID
+INPUT_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
+# データを出力するスプレッドシートID
+OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
+
 DATE_STR = datetime.now().strftime('%y%m%d')
-# テンプレートとして使用するベースシート名
 BASE_SHEET = 'Base'
 
 # ヘッドレスブラウザ設定
@@ -28,17 +31,19 @@ chrome_options.add_argument('--disable-dev-shm-usage')
 # WebDriver起動
 browser = webdriver.Chrome(options=chrome_options)
 
-# Google SheetからURL取得
-# 入力シート名を「URLS」に修正
-sh = gc.open_by_key(SPREADSHEET_ID)
-input_ws = sh.worksheet("URLS")
+# 入力スプレッドシートからURL取得
+sh_input = gc.open_by_key(INPUT_SPREADSHEET_ID)
+input_ws = sh_input.worksheet("URLS")
 urls = input_ws.col_values(3)[1:]  # C列（C2以降）
 
-# 日付シートがなければ作成
-if DATE_STR not in [ws.title for ws in sh.worksheets()]:
-    sh.duplicate_sheet(sh.worksheet(BASE_SHEET).id, new_sheet_name=DATE_STR)
+# 出力スプレッドシートを設定
+sh_output = gc.open_by_key(OUTPUT_SPREADSHEET_ID)
 
-date_ws = sh.worksheet(DATE_STR)
+# 日付シートがなければ作成
+if DATE_STR not in [ws.title for ws in sh_output.worksheets()]:
+    sh_output.duplicate_sheet(sh_output.worksheet(BASE_SHEET).id, new_sheet_name=DATE_STR)
+
+date_ws = sh_output.worksheet(DATE_STR)
 
 # ニュース記事取得関数
 def fetch_article_and_comments(url):
@@ -80,9 +85,9 @@ for idx, url in enumerate(urls):
 
         # 個別シート作成
         sheet_title = str(idx + 1)
-        if sheet_title in [ws.title for ws in sh.worksheets()]:
-            sh.del_worksheet(sh.worksheet(sheet_title))
-        new_ws = sh.add_worksheet(title=sheet_title, rows="100", cols="10")
+        if sheet_title in [ws.title for ws in sh_output.worksheets()]:
+            sh_output.del_worksheet(sh_output.worksheet(sheet_title))
+        new_ws = sh_output.add_worksheet(title=sheet_title, rows="100", cols="10")
 
         # 本文出力（1〜）
         for i, line in enumerate(body):
