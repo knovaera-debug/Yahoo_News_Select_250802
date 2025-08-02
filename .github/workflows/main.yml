@@ -1,31 +1,28 @@
-name: Yahoo News Scraper
+name: Run Yahoo News Scraper
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
-  schedule:
-    - cron: '0 5 * * *'  # JST 14:00
 
 jobs:
-  run-script:
+  scrape:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y xvfb libxi6 google-chrome-stable
-        pip install -r requirements.txt
-
-    - name: Run Yahoo News Scraper
-      env:
-        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-      run: |
-        xvfb-run python scrape_yahoo_news.py
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run scraper
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: xvfb-run python scrape_yahoo_news.py
