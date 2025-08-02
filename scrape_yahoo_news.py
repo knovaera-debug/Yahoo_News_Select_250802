@@ -31,107 +31,133 @@ browser = webdriver.Chrome(options=chrome_options)
 print("--- Getting URLs from spreadsheet ---")
 sh_input = gc.open_by_key(INPUT_SPREADSHEET_ID)
 input_ws = sh_input.worksheet("URLS")
-urls = input_ws.col_values(3)[1:] # C列（C2以降）からURLを取得
-print(f"Found {len(urls)} URLs: {urls}")
+input_urls = [url for url in input_ws.col_values(3)[1:] if url]
+print(f"Found {len(input_urls)} URLs to process.")
 
 # 出力スプレッドシートを設定
 sh_output = gc.open_by_key(OUTPUT_SPREADSHEET_ID)
 print("--- Checking output sheet ---")
-if DATE_STR not in [ws.title for ws in sh_output.worksheets()]:
+
+if DATE_STR in [ws.title for ws in sh_output.worksheets()]:
+    date_ws = sh_output.worksheet(DATE_STR)
+    print(f"Using existing output sheet: {date_ws.title}")
+
+    existing_urls = []
+    try:
+        # 既存の出力シートの3行目からURLを取得
+        all_urls_in_sheet = date_ws.row_values(3)
+        existing_urls = [url for url in all_urls_in_sheet[1:] if url and url.startswith(('http://', 'https://'))]
+    except gspread.exceptions.APIError as e:
+        print(f"Could not retrieve existing URLs from sheet. Error: {e}")
+    
+    urls_to_add = [url for url in input_urls if url not in existing_urls]
+    print(f"Found {len(existing_urls)} existing URLs. Adding {len(urls_to_add)} new URLs.")
+
+else:
     sh_output.duplicate_sheet(sh_output.worksheet(BASE_SHEET).id, new_sheet_name=DATE_STR)
-    print(f"Created new sheet: {DATE_STR}")
-date_ws = sh_output.worksheet(DATE_STR)
-print(f"Using output sheet: {date_ws.title}")
+    date_ws = sh_output.worksheet(DATE_STR)
+    print(f"Created new sheet: {date_ws.title}")
+    urls_to_add = [url for url in input_urls if url]
+    print(f"Found {len(urls_to_add)} new URLs to add.")
+
+if not urls_to_add:
+    print("No new URLs to add. Exiting.")
+    browser.quit()
+    exit()
 
 # ニュース記事の処理
-print("--- Starting URL processing ---")
-output_column = 2 # B列から開始
-for idx, base_url in enumerate(urls, start=1):
-    if not base_url or not base_url.startswith(('http://', 'https://')):
-        print(f'Skipping invalid or empty URL at index {idx}: {base_url}')
-        continue
+print("--- Starting URL processing for new articles ---")
+output_column = len(existing_urls) + 2 if 'existing_urls' in locals() else 2
 
-    headers = {'User-Agent': 'Mozilla/5.0'}
-
-    # 記事本文の取得
-    article_bodies = []
-    page = 1
-    print(f"  - Processing article body for URL {idx}: {base_url}")
-    while True:
-        url = base_url if page == 1 else f"{base_url}?page={page}"
-        res = requests.get(url, headers=headers)
-        soup = BeautifulSoup(res.text, 'html.parser')
-
-        if '指定されたURLは存在しませんでした' in res.text:
-            break
-
-        body_tag = soup.find('article')
-        body_text = body_tag.get_text(separator='\n').strip() if body_tag else ''
-
-        if not body_text or body_text in article_bodies:
-            break
-
-        article_bodies.append(body_text)
-        page += 1
-    print(f"  - Found {len(article_bodies)} body pages.")
-    
-    # 記事タイトルと投稿日取得
-    res_main = requests.get(base_url, headers=headers)
-    soup_main = BeautifulSoup(res_main.text, 'html.parser')
-    page_title = soup_main.title.string if soup_main.title else '取得不可'
-    title = page_title.replace(' - Yahoo!ニュース', '').strip() if page_title else '取得不可'
-    date_tag = soup_main.find('time')
-    article_date = date_tag.text.strip() if date_tag else '取得不可'
-    
-    # コメント取得（Selenium使用）
-    comments = []
-    comment_page = 1
-    print("  - Scraping comments with Selenium...")
-    while True:
-        comment_url = f"{base_url}/comments?page={comment_page}"
-        browser.get(comment_url)
-        time.sleep(2)
-
-        if '指定されたURLは存在しませんでした' in browser.page_source:
-            break
-
-        soup_comments = BeautifulSoup(browser.page_source, 'html.parser')
-        comment_paragraphs = soup_comments.find_all('p', class_='sc-169yn8p-10 hYFULX')
-        page_comments = [p.get_text(strip=True) for p in comment_paragraphs if p.get_text(strip=True)]
-
-        if not page_comments:
-            break
-
-        comments.extend(page_comments)
-        comment_page += 1
-    print(f"  - Found {len(comments)} comments.")
-
-    # 出力シートに書き込み
+for idx, base_url in enumerate(urls_to_add, start=1):
     try:
+        print(f"  - Processing URL: {base_url}")
+        
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        
+        # 記事本文、タイトル、投稿日の取得
+        article_bodies = []
+        page = 1
+        print(f"    - Processing article body...")
+        while True:
+            url = base_url if page == 1 else f"{base_url}?page={page}"
+            res = requests.get(url, headers=headers)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            if '指定されたURLは存在しませんでした' in res.text:
+                break
+            body_tag = soup.find('article')
+            body_text = body_tag.get_text(separator='\n').strip() if body_tag else ''
+            if not body_text or body_text in article_bodies:
+                break
+            article_bodies.append(body_text)
+            page += 1
+        print(f"    - Found {len(article_bodies)} body pages.")
+
+        res_main = requests.get(base_url, headers=headers)
+        soup_main = BeautifulSoup(res_main.text, 'html.parser')
+        page_title = soup_main.title.string if soup_main.title else '取得不可'
+        title = page_title.replace(' - Yahoo!ニュース', '').strip() if page_title else '取得不可'
+        date_tag = soup_main.find('time')
+        article_date = date_tag.text.strip() if date_tag else '取得不可'
+        print(f"    - Article Title: {title}")
+        print(f"    - Article Date: {article_date}")
+
+        # コメント取得（Selenium使用）
+        comments = []
+        comment_page = 1
+        print("    - Scraping comments with Selenium...")
+        while True:
+            comment_url = f"{base_url}/comments?page={comment_page}"
+            browser.get(comment_url)
+            time.sleep(2)
+            if '指定されたURLは存在しませんでした' in browser.page_source:
+                break
+            soup_comments = BeautifulSoup(browser.page_source, 'html.parser')
+            comment_paragraphs = soup_comments.find_all('p', class_='sc-169yn8p-10 hYFULX')
+            page_comments = [p.get_text(strip=True) for p in comment_paragraphs if p.get_text(strip=True)]
+            if not page_comments:
+                break
+            comments.extend(page_comments)
+            comment_page += 1
+        print(f"    - Found {len(comments)} comments.")
+
+        # 出力シートに書き込み
         current_column_idx = output_column + (idx - 1)
+        print(f"    - Writing data to column {current_column_idx}...")
         
-        # タイトル、投稿日、URLを1行目から書き込み
-        cell_updates = []
-        cell_updates.append((1, current_column_idx, title))
-        cell_updates.append((2, current_column_idx, article_date))
-        cell_updates.append((3, current_column_idx, base_url))
+        # データをリストにまとめる
+        data_to_write = [
+            [title],
+            [article_date],
+            [base_url],
+        ]
         
-        # 本文を4行目以降に書き込み
-        for i, body in enumerate(article_bodies, start=4):
-            cell_updates.append((i, current_column_idx, body))
+        # 本文を追加
+        for body in article_bodies:
+            data_to_write.append([body])
 
-        # コメントを20行目以降に書き込み
-        for i, comment in enumerate(comments, start=20):
-            cell_updates.append((i, current_column_idx, comment))
+        # コメントを20行目以降に追加
+        # 間に空行を挿入
+        empty_rows_count = 20 - len(data_to_write)
+        if empty_rows_count > 0:
+            data_to_write.extend([['']] * empty_rows_count)
 
-        for row, col, value in cell_updates:
-            date_ws.update_cell(row, col, value)
+        for comment in comments:
+            data_to_write.append([comment])
 
+        # データをまとめて書き込み
+        start_cell = f'{gspread.utils.col_letterize(current_column_idx)}1'
+        date_ws.update(start_cell, data_to_write)
+        
         print(f"  - Successfully wrote data for URL {idx} to column {current_column_idx}")
 
     except Exception as e:
         print(f"  - Error writing to Google Sheets for URL {idx}: {e}")
-        date_ws.update_cell(1, output_column + (idx - 1), 'ERROR')
+        # エラー発生時は単にログを出力し、プログラムを続行
+        # Quota exceededエラーが出ているため、追加のAPIコールは行わない
+        print("  - Quota exceeded error likely. Please wait a minute before retrying.")
+        browser.quit()
+        exit()
 
 browser.quit()
 print("--- Scraping job finished ---")
