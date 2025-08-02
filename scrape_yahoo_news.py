@@ -33,7 +33,7 @@ driver = webdriver.Chrome(options=options)
 try:
     # ✅ 入力スプレッドシートからURLを取得
     INPUT_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
-    input_ws = gc.open_by_key(INPUT_SPREADSHEET_ID).worksheet('Sheet1')  # シート名を適切に変更
+    input_ws = gc.open_by_key(INPUT_SPREADSHEET_ID).worksheet('URLS')
     article_url = input_ws.acell('A2').value
     
     if not article_url:
@@ -70,7 +70,7 @@ try:
 
         # ✅ 出力スプレッドシートに書き込み
         OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
-        output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('シート1') # シート名を適切に変更
+        output_ws = gc.open_by_key(OUTPUT_SPREADSHEET_ID).worksheet('Base')
         
         try:
             output_ws.update('B6', article_body)
