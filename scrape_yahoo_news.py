@@ -27,6 +27,15 @@ chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage')
 browser = webdriver.Chrome(options=chrome_options)
 
+# ヘルパー関数: 列番号をアルファベットに変換
+def col_to_letter(col_num):
+    """Convert 1-based column number to a letter (e.g. 1 -> 'A', 27 -> 'AA')."""
+    string = ""
+    while col_num > 0:
+        col_num, remainder = divmod(col_num - 1, 26)
+        string = chr(65 + remainder) + string
+    return string
+
 # 入力スプレッドシートからURLを取得
 print("--- Getting URLs from spreadsheet ---")
 sh_input = gc.open_by_key(INPUT_SPREADSHEET_ID)
@@ -44,7 +53,6 @@ if DATE_STR in [ws.title for ws in sh_output.worksheets()]:
 
     existing_urls = []
     try:
-        # 既存の出力シートの3行目からURLを取得
         all_urls_in_sheet = date_ws.row_values(3)
         existing_urls = [url for url in all_urls_in_sheet[1:] if url and url.startswith(('http://', 'https://'))]
     except gspread.exceptions.APIError as e:
@@ -137,7 +145,6 @@ for idx, base_url in enumerate(urls_to_add, start=1):
             data_to_write.append([body])
 
         # コメントを20行目以降に追加
-        # 間に空行を挿入
         empty_rows_count = 20 - len(data_to_write)
         if empty_rows_count > 0:
             data_to_write.extend([['']] * empty_rows_count)
@@ -146,14 +153,14 @@ for idx, base_url in enumerate(urls_to_add, start=1):
             data_to_write.append([comment])
 
         # データをまとめて書き込み
-        start_cell = f'{gspread.utils.column_letterize(current_column_idx)}1'
+        start_cell = f'{col_to_letter(current_column_idx)}1'
         date_ws.update(start_cell, data_to_write)
         
         print(f"  - Successfully wrote data for URL {idx} to column {current_column_idx}")
 
     except Exception as e:
         print(f"  - Error writing to Google Sheets for URL {idx}: {e}")
-        print("  - Quota exceeded error likely. Please wait a minute before retrying.")
+        print("  - An error occurred. Exiting the program to prevent further issues.")
         browser.quit()
         exit()
 
