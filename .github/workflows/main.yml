@@ -1,28 +1,40 @@
-name: Run Yahoo News Scraper
+name: Yahoo News Scraper
 
 on:
-  push:
-    branches: [ "main" ]
+  schedule:
+    - cron: '30 5 * * *'  # 毎日14:30 JST（05:30 UTC）
   workflow_dispatch:
 
 jobs:
-  scrape:
+  run:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: 📅 リポジトリ取得
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: 🐍 Python セットアップ
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: 3.11
 
-      - name: Install dependencies
+      - name: 🚀 Chrome・ChromeDriver・ライブラリインストール
         run: |
+          sudo apt update
+          sudo apt install -y wget unzip xvfb libxi6
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
+          wget -O chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_VERSION%%.*}/chromedriver_linux64.zip
+          unzip chromedriver.zip
+          sudo mv chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
           pip install -r requirements.txt
-      
-      - name: Run scraper
+
+      - name: ▶️ スクレイピング実行
+        run: python scrape_yahoo_news.py
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: xvfb-run python scrape_yahoo_news.py
+
+      - name: ✅ 完了通知
+        run: echo "Yahoo News Scraping Done!"
