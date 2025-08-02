@@ -47,7 +47,7 @@ driver = webdriver.Chrome(options=options)
 
 # ✅ 処理本体
 for keyword in keywords:
-    print(f"🔍 検索開始: {keyword}")
+    print(f"\U0001F50D 検索開始: {keyword}")
     url = f"https://news.yahoo.co.jp/search?p={keyword}&ei=utf-8"
     driver.get(url)
     time.sleep(2)
@@ -60,26 +60,28 @@ for keyword in keywords:
         link = article.a['href'] if article.a else ""
         time_tag = article.time
         time_str = time_tag['datetime'] if time_tag and 'datetime' in time_tag.attrs else ''
+
+        # ✅ コメント数取得処理
+        comment_count = ""
+        try:
+            if 'news.yahoo.co.jp/articles/' in link:
+                driver.get(link)
+                time.sleep(1.5)
+                soup_detail = BeautifulSoup(driver.page_source, 'html.parser')
+                comment_tag = soup_detail.select_one("a[class*='comment']")
+                if comment_tag and comment_tag.text:
+                    comment_count = ''.join(filter(str.isdigit, comment_tag.text))
+        except Exception as e:
+            print(f"⚠️ コメント取得失敗: {e}")
+
         try:
             article_data = f'=HYPERLINK("{link}", "{title}")'
             output_ws.update(f'B{i+1}', article_data)
             output_ws.update(f'C{i+1}', time_str)
             output_ws.update(f'D{i+1}', keyword)
+            output_ws.update(f'F{i+1}', comment_count)
         except Exception as e:
             print(f"⚠️ 書き込み失敗: {e}")
-
-        # コメント数取得（必要に応じて）
-        try:
-            if link.startswith('https://news.yahoo.co.jp/articles/'):
-                driver.get(link)
-                time.sleep(2)
-                soup = BeautifulSoup(driver.page_source, 'html.parser')
-                comment_count_elem = soup.select_one('span[class*="commentCount"]')
-                comment_count = comment_count_elem.text.strip() if comment_count_elem else "0"
-                output_ws.update(f'F{i+1}', comment_count)
-        except Exception as e:
-            print(f"⚠️ コメント数取得失敗: {e}")
-
 
 print("✅ 完了")
 driver.quit()
