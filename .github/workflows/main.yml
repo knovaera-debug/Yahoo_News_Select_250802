@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📅 リポジトリ取得
+      - name: 📥 リポジトリ取得
         uses: actions/checkout@v3
 
       - name: 🐍 Python セットアップ
@@ -18,10 +18,10 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: 🚀 Chrome・ChromeDriver・ライブラリインストール
+      - name: 🧱 ChromeとChromedriverのインストール
         run: |
           sudo apt update
-          sudo apt install -y wget unzip xvfb libxi6
+          sudo apt install -y wget unzip xvfb libxi6 libglib2.0-0
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome*.deb || sudo apt -f install -y
           CHROME_VERSION=$(google-chrome --version | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+')
@@ -29,9 +29,12 @@ jobs:
           unzip chromedriver.zip
           sudo mv chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
+
+      - name: 🧪 依存ライブラリインストール
+        run: |
           pip install -r requirements.txt
 
-      - name: ▶️ スクレイピング実行
+      - name: 🟢 スクリプト実行
         run: python scrape_yahoo_news.py
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
