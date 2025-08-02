@@ -56,6 +56,7 @@ try:
         
         try:
             # 記事本文の段落が読み込まれるまで最大30秒待機
+            # data-testid属性は安定している傾向があるため、これをセレクタとして使用します。
             WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="article-body"] p'))
             )
@@ -63,9 +64,16 @@ try:
             body_paragraphs = article_soup.select('div[data-testid="article-body"] p')
             article_body = "\n".join([p.text.strip() for p in body_paragraphs])
             print("✅ 記事本文の取得に成功しました。")
-            print(f"　取得した本文の冒頭: {article_body[:50]}...")
-        except (TimeoutException, NoSuchElementException):
-            print("⚠️ 記事本文の取得に失敗しました。")
+            if article_body:
+                print(f"　取得した本文の冒頭: {article_body[:50]}...")
+            else:
+                print("　記事本文は取得できましたが、内容が空です。")
+        except (TimeoutException, NoSuchElementException) as e:
+            print(f"⚠️ 記事本文の取得に失敗しました: {e}")
+            print("--- デバッグ情報（HTMLソースの冒頭500文字） ---")
+            print(driver.page_source[:500])
+            print("-------------------------------------------------")
+
 
         # ✅ 出力スプレッドシートに書き込み
         OUTPUT_SPREADSHEET_ID = '1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM'
