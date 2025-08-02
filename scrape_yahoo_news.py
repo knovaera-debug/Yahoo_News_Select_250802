@@ -35,7 +35,6 @@ try:
     # ✅ 入力スプレッドシートからURLをすべて取得
     INPUT_SPREADSHEET_ID = '1yjHpQMHfJt7shjqZ6SYQNNlHougbrw0ZCgWpFUgv3Sc'
     input_ws = gc.open_by_key(INPUT_SPREADSHEET_ID).worksheet('URLS')
-    # A2以降のA列の値をすべて取得
     urls = input_ws.col_values(1)[1:]
 
     # ✅ 出力スプレッドシートを開く
@@ -46,32 +45,32 @@ try:
         if not base_url:
             continue
             
-        # 最初のページ（page=1）にアクセスしてタイトルと投稿日時を取得
         try:
             driver.get(base_url)
-            time.sleep(3) # ページの描画を待つために一時停止を追加
+            time.sleep(3)
             initial_soup = BeautifulSoup(driver.page_source, 'html.parser')
             
-            # ✅ B3にタイトルを書き込み (titleタグから取得し、不要な部分を削除)
             page_title = initial_soup.title.string if initial_soup.title else '取得不可'
-            news_title = page_title.replace(' - Yahoo!ニュース', '').strip() if ' - Yahoo!ニュース' in page_title else page_title.strip()
-            output_ws.update('B3', [[news_title]])
+            # タイトルから余分な部分を削除
+            news_title = page_title.replace(' - Yahoo!ニュース', '').strip()
+            # 記事タイトルの末尾にある（提供元）も削除
+            if '（' in news_title and news_title.endswith('）'):
+                news_title = news_title[:news_title.rfind('（')]
+            
+            output_ws.update(range_name='B3', values=[[news_title]])
             print(f"✅ B3セルにタイトルを書き込みました: {news_title}")
 
-            # ✅ B4にURLを書き込み
-            output_ws.update('B4', [[base_url]])
+            output_ws.update(range_name='B4', values=[[base_url]])
             print(f"✅ B4セルにURLを書き込みました: {base_url}")
 
-            # ✅ B5に投稿日時を書き込み
             date_tag = initial_soup.find('time')
             news_date = date_tag.text.strip() if date_tag else '取得不可'
-            output_ws.update('B5', [[news_date]])
+            output_ws.update(range_name='B5', values=[[news_date]])
             print(f"✅ B5セルに投稿日時を書き込みました: {news_date}")
             
         except Exception as e:
             print(f"⚠️ タイトル、URL、投稿日時の取得または書き込みに失敗しました: {e}")
             
-        # 記事本文（複数ページ対応）の取得と書き込み
         page_number = 1
         while True:
             if page_number == 1:
@@ -113,23 +112,21 @@ try:
 
                 if len(article_body) > 50000:
                     truncated_body = article_body[:50000] + "..."
-                    output_ws.update(row_to_write, [[truncated_body]])
+                    output_ws.update(range_name=row_to_write, values=[[truncated_body]])
                     print(f"✅ 記事本文が長いため、50000文字に制限して{row_to_write}セルに書き込みました。")
                 else:
-                    output_ws.update(row_to_write, [[article_body]])
+                    output_ws.update(range_name=row_to_write, values=[[article_body]])
                     print(f"✅ {row_to_write}セルに記事本文を書き込みました。")
             except Exception as e:
                 print(f"⚠️ 書き込み失敗: {e}")
             
             page_number += 1
 
-        # ✅ コメントの取得と書き込み
         print("-" * 20)
         print("🔍 コメントの取得を開始します。")
         all_comments = []
         comment_page_number = 1
         while True:
-            # コメントページのURLを構築
             if comment_page_number == 1:
                 comment_url = f"{base_url}/comments"
             else:
@@ -138,7 +135,6 @@ try:
             print(f"🔍 URL: {comment_url} のコメントを取得します。")
             driver.get(comment_url)
             
-            # ページが存在しない場合のチェック
             if "指定されたURLは存在しませんでした。" in driver.page_source:
                 print(f"ℹ️ コメントの{comment_page_number}ページ目は存在しませんでした。コメントの取得を終了します。")
                 break
@@ -146,14 +142,14 @@ try:
             try:
                 # コメントのコンテナが読み込まれるまで待機
                 WebDriverWait(driver, 30).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '.ca-list-item'))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'span[data-testid="comment-body"]'))
                 )
                 comment_soup = BeautifulSoup(driver.page_source, 'html.parser')
-                # 各コメントのテキストを取得
-                comments_on_page = comment_soup.select('.ca-list-item')
+                comments_on_page = comment_soup.select('span[data-testid="comment-body"]')
+                
                 if comments_on_page:
                     for comment_item in comments_on_page:
-                        comment_text = comment_item.find('p', class_='ca-body').text.strip()
+                        comment_text = comment_item.text.strip()
                         all_comments.append(comment_text)
                     print(f"✅ コメントの{comment_page_number}ページ目から{len(comments_on_page)}件取得しました。")
                 else:
@@ -166,24 +162,22 @@ try:
 
             comment_page_number += 1
 
-        # ✅ 取得したコメントの総数をB18に書き込み
         try:
-            output_ws.update('B18', [[len(all_comments)]])
+            output_ws.update(range_name='B18', values=[[len(all_comments)]])
             print(f"✅ B18セルにコメント総数（{len(all_comments)}件）を書き込みました。")
         except Exception as e:
             print(f"⚠️ コメント総数の書き込みに失敗しました: {e}")
 
-        # ✅ 取得したコメントをB19以降に書き込み
         if all_comments:
             try:
-                # コメントのリストを書き込み用に変換
                 comments_to_write = [[c] for c in all_comments]
-                output_ws.update('B19', comments_to_write)
+                output_ws.update(range_name='B19', values=comments_to_write)
                 print(f"✅ B19セル以降に{len(all_comments)}件のコメントを書き込みました。")
             except Exception as e:
                 print(f"⚠️ コメントの書き込みに失敗しました: {e}")
         else:
             print("ℹ️ 取得したコメントはありませんでした。")
+
 finally:
     driver.quit()
     print("✅ 完了")
