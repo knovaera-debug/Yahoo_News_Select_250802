@@ -52,9 +52,9 @@ try:
             time.sleep(3) # ページの描画を待つために一時停止を追加
             initial_soup = BeautifulSoup(driver.page_source, 'html.parser')
             
-            # ✅ B3にタイトルを書き込み
-            title_tag = initial_soup.find('h1')
-            news_title = title_tag.text.strip() if title_tag else '取得不可'
+            # ✅ B3にタイトルを書き込み (titleタグから取得し、不要な部分を削除)
+            page_title = initial_soup.title.string if initial_soup.title else '取得不可'
+            news_title = page_title.replace(' - Yahoo!ニュース', '').strip() if ' - Yahoo!ニュース' in page_title else page_title.strip()
             output_ws.update('B3', [[news_title]])
             print(f"✅ B3セルにタイトルを書き込みました: {news_title}")
 
@@ -74,7 +74,6 @@ try:
         # 記事本文（複数ページ対応）の取得と書き込み
         page_number = 1
         while True:
-            # ページ番号に応じてURLを構築
             if page_number == 1:
                 article_url = base_url
             else:
@@ -86,7 +85,7 @@ try:
             driver.get(article_url)
 
             if "指定されたURLは存在しませんでした。" in driver.page_source:
-                print(f"ℹ️ {page_number}ページ目は存在しませんでした。処理を終了します。")
+                print(f"ℹ️ {page_number}ページ目は存在しませんでした。本文の取得を終了します。")
                 break
 
             try:
@@ -124,6 +123,67 @@ try:
             
             page_number += 1
 
+        # ✅ コメントの取得と書き込み
+        print("-" * 20)
+        print("🔍 コメントの取得を開始します。")
+        all_comments = []
+        comment_page_number = 1
+        while True:
+            # コメントページのURLを構築
+            if comment_page_number == 1:
+                comment_url = f"{base_url}/comments"
+            else:
+                comment_url = f"{base_url}/comments?page={comment_page_number}"
+
+            print(f"🔍 URL: {comment_url} のコメントを取得します。")
+            driver.get(comment_url)
+            
+            # ページが存在しない場合のチェック
+            if "指定されたURLは存在しませんでした。" in driver.page_source:
+                print(f"ℹ️ コメントの{comment_page_number}ページ目は存在しませんでした。コメントの取得を終了します。")
+                break
+            
+            try:
+                # コメントのコンテナが読み込まれるまで待機
+                WebDriverWait(driver, 30).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '.ca-list-item'))
+                )
+                comment_soup = BeautifulSoup(driver.page_source, 'html.parser')
+                # 各コメントのテキストを取得
+                comments_on_page = comment_soup.select('.ca-list-item')
+                if comments_on_page:
+                    for comment_item in comments_on_page:
+                        comment_text = comment_item.find('p', class_='ca-body').text.strip()
+                        all_comments.append(comment_text)
+                    print(f"✅ コメントの{comment_page_number}ページ目から{len(comments_on_page)}件取得しました。")
+                else:
+                    print(f"ℹ️ コメントの{comment_page_number}ページ目にコメントはありませんでした。")
+                    break
+
+            except (TimeoutException, NoSuchElementException) as e:
+                print(f"⚠️ コメントの取得に失敗しました: {e}")
+                break
+
+            comment_page_number += 1
+
+        # ✅ 取得したコメントの総数をB18に書き込み
+        try:
+            output_ws.update('B18', [[len(all_comments)]])
+            print(f"✅ B18セルにコメント総数（{len(all_comments)}件）を書き込みました。")
+        except Exception as e:
+            print(f"⚠️ コメント総数の書き込みに失敗しました: {e}")
+
+        # ✅ 取得したコメントをB19以降に書き込み
+        if all_comments:
+            try:
+                # コメントのリストを書き込み用に変換
+                comments_to_write = [[c] for c in all_comments]
+                output_ws.update('B19', comments_to_write)
+                print(f"✅ B19セル以降に{len(all_comments)}件のコメントを書き込みました。")
+            except Exception as e:
+                print(f"⚠️ コメントの書き込みに失敗しました: {e}")
+        else:
+            print("ℹ️ 取得したコメントはありませんでした。")
 finally:
     driver.quit()
     print("✅ 完了")
