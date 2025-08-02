@@ -21,6 +21,9 @@ jobs:
       - name: 📊 Install dependencies
         run: pip install -r requirements.txt
 
+      - name: 📄 Create credentials.json  # このステップを追加
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+
       - name: 🔄 Run Yahoo News scraper
         run: python scrape_yahoo_news.py
         env:
