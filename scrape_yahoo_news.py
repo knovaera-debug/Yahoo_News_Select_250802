@@ -27,6 +27,7 @@ chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage')
 
 # WebDriver起動
+# main.ymlで手動インストールされたchromedriverを使用する
 browser = webdriver.Chrome(options=chrome_options)
 
 # 入力スプレッドシートからURL取得
