@@ -1,103 +1,124 @@
 import os
 import json
 import time
-import gspread
-import pytz
-import chromedriver_autoinstaller
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Google Sheets認証
+# ===========================
+# Google Sheets 認証
+# ===========================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+with open("credentials.json", "r", encoding="utf-8") as f:
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(json.load(f), scope)
 gc = gspread.authorize(credentials)
 
-# シート設定
+# ===========================
+# Google Sheets 取得
+# ===========================
 SPREADSHEET_ID = "1ff9j8Dr2G6UO2GjsLNpgC8bW0KJmX994iJruw4X_qVM"
-INPUT_SHEET = "input"
+sheet = gc.open_by_key(SPREADSHEET_ID)
+input_ws = sheet.worksheet("input")
+urls = input_ws.col_values(3)[1:]  # C2以降
 
-# JST設定
-JST = pytz.timezone("Asia/Tokyo")
-now = datetime.now(JST)
-now_str = now.strftime("%y%m%d")
+# ===========================
+# 出力ファイル設定
+# ===========================
+today_str = datetime.now().strftime("%y%m%d")
+try:
+    base_ws = sheet.worksheet("Base")
+    sheet.duplicate_sheet(base_ws.id, insert_sheet_index=0, new_sheet_name=today_str)
+except:
+    pass
 
-# Chrome headless設定
-chromedriver_autoinstaller.install()
+daily_ws = sheet.worksheet(today_str)
+
+# ===========================
+# Selenium設定（ヘッドレス）
+# ===========================
 options = Options()
-options.add_argument('--headless')
-options.add_argument('--no-sandbox')
-options.add_argument('--disable-dev-shm-usage')
+options.add_argument("--headless")
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")
 driver = webdriver.Chrome(options=options)
 
-def fetch_article_and_comments(url):
+# ===========================
+# 相対時間 -> 絶対時間
+# ===========================
+def parse_relative_time(text):
+    now = datetime.now()
+    if "分前" in text:
+        return now - timedelta(minutes=int(text.replace("分前", "").strip()))
+    elif "時間前" in text:
+        return now - timedelta(hours=int(text.replace("時間前", "").strip()))
+    elif "日前" in text:
+        return now - timedelta(days=int(text.replace("日前", "").strip()))
+    return now
+
+# ===========================
+# メイン処理
+# ===========================
+def scrape_article(url):
     driver.get(url)
     time.sleep(2)
     soup = BeautifulSoup(driver.page_source, "html.parser")
 
     # 本文
-    article = soup.find("article")
-    content_lines = []
-    if article:
-        for p in article.find_all("p"):
-            text = p.get_text(strip=True)
-            if text:
-                content_lines.append(text)
+    article_elem = soup.select_one("article")
+    paragraphs = [p.get_text(strip=True) for p in article_elem.select("p") if p.get_text(strip=True)] if article_elem else []
 
-    # コメント数取得
+    # コメント数
     comment_count = 0
-    try:
-        comment_span = soup.find("span", class_="news-comment-count")
-        if comment_span:
-            comment_count = int(comment_span.text.strip().replace("件", ""))
-    except:
-        pass
+    count_elem = soup.select_one(".news-comment-plural__count")
+    if count_elem:
+        try:
+            comment_count = int(count_elem.get_text().replace(",", ""))
+        except:
+            pass
 
-    # コメント本体
+    # コメント一覧取得
     comments = []
-    comment_blocks = soup.select(".news-comment-body")
+    comment_blocks = soup.select(".news-comment-list__item")
     for block in comment_blocks:
-        text = block.get_text(strip=True)
+        text = block.select_one(".news-comment-body")
+        user = block.select_one(".news-comment-user__name")
+        time_tag = block.select_one(".news-comment-time")
         if text:
-            comments.append(text)
+            comments.append([user.text.strip() if user else "",
+                             parse_relative_time(time_tag.text.strip()).strftime("%Y/%m/%d %H:%M") if time_tag else "",
+                             text.text.strip()])
 
-    return content_lines, comments, comment_count
+    return paragraphs, comment_count, comments
 
-def main():
-    sh = gc.open_by_key(SPREADSHEET_ID)
-    input_ws = sh.worksheet(INPUT_SHEET)
-    urls = input_ws.col_values(3)[1:]  # C列（C2〜）
-
-    # 出力シートがなければ作成
+# ===========================
+# 実行ループ
+# ===========================
+for idx, url in enumerate(urls):
+    if not url.strip():
+        continue
+    print(f"▶ {idx+1}: {url}")
     try:
-        output_ws = sh.worksheet(now_str)
-    except:
-        base = sh.worksheet("Base")
-        output_ws = sh.duplicate_sheet(source_sheet_id=base.id, new_sheet_name=now_str)
-        output_ws = sh.worksheet(now_str)
+        paragraphs, comment_count, comments = scrape_article(url)
 
-    for i, url in enumerate(urls):
-        if not url.strip():
-            continue
+        # output: 本文 & コメント一覧
+        page_ws = sheet.duplicate_sheet(base_ws.id, new_sheet_name=str(idx + 1))
+        target_ws = sheet.worksheet(str(idx + 1))
+        for i, line in enumerate(paragraphs[:15]):
+            target_ws.update_cell(i + 1, 1, line)
 
-        print(f"[{i+1}] {url}")
-        content, comments, count = fetch_article_and_comments(url)
+        for i, comment in enumerate(comments[:100]):
+            target_ws.update(f"A{20 + i}:C{20 + i}", [comment])
 
-        # 本文
-        for j, line in enumerate(content):
-            output_ws.update_cell(1 + j + 1, 1, line)
+        # inputシートF列にコメント数を記録
+        input_ws.update_cell(idx + 2, 6, comment_count)
 
-        # コメント
-        for k, comment in enumerate(comments):
-            output_ws.update_cell(20 + k + 1, 1, comment)
+    except Exception as e:
+        print(f"❌ Error at {url}: {e}")
 
-        # コメント件数をinputシートF列に
-        input_ws.update_cell(i + 2, 6, count)
-
-    driver.quit()
-
-if __name__ == "__main__":
-    main()
+# 終了処理
+driver.quit()
+print("✅ 全処理完了")
